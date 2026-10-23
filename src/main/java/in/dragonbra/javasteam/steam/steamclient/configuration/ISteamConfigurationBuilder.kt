@@ -48,6 +48,15 @@ interface ISteamConfigurationBuilder {
     fun withHttpClient(httpClient: OkHttpClient): ISteamConfigurationBuilder
 
     /**
+     * Configures this [SteamConfiguration] to hand depot chunks, web files and Workshop files to the host's own
+     * downloads instead of fetching them with the HTTP client.
+     *
+     * @param fetcher the host's downloads
+     * @return A builder with modified configuration.
+     */
+    fun withFetcher(fetcher: `in`.dragonbra.javasteam.steam.cdn.Fetcher): ISteamConfigurationBuilder
+
+    /**
      * Configures this [SteamConfiguration] with the default [EClientPersonaStateFlag]s to request from Steam.
      *
      * @param personaStateFlags The default persona state flags used when requesting information for a new friend, or when calling **SteamFriends.RequestFriendInfo** without specifying flags.

@@ -40,6 +40,11 @@ class SteamConfigurationBuilder : ISteamConfigurationBuilder {
         return this
     }
 
+    override fun withFetcher(fetcher: `in`.dragonbra.javasteam.steam.cdn.Fetcher): ISteamConfigurationBuilder {
+        state.fetcher = fetcher
+        return this
+    }
+
     override fun withDefaultPersonaStateFlags(personaStateFlags: EnumSet<EClientPersonaStateFlag>): ISteamConfigurationBuilder {
         state.defaultPersonaStateFlags = personaStateFlags
         return this

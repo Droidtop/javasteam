@@ -83,7 +83,7 @@ tasks.withType<FormatTask> {
 dependencies {
     implementation(rootProject)
 
-    implementation(libs.bundles.ktor)
+    implementation(libs.bundles.okHttp)
     implementation(libs.commons.lang3)
     implementation(libs.kotlin.coroutines)
     implementation(libs.kotlin.serialization.json)
