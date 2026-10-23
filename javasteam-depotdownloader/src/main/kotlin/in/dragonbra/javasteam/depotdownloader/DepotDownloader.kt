@@ -30,10 +30,6 @@ import `in`.dragonbra.javasteam.util.SteamKitWebRequestException
 import `in`.dragonbra.javasteam.util.Strings
 import `in`.dragonbra.javasteam.util.log.LogManager
 import `in`.dragonbra.javasteam.util.log.Logger
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.HttpHeaders
-import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -58,11 +54,14 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import okhttp3.Request
+import okhttp3.coroutines.executeAsync
 import okio.FileSystem
 import okio.ForwardingFileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import okio.buffer
+import okio.source
 import org.apache.commons.lang3.SystemUtils
 import java.io.Closeable
 import java.io.File
@@ -151,7 +150,6 @@ class DepotDownloader @JvmOverloads constructor(
 
     private val completionFuture = CompletableFuture<Void>()
 
-    private val httpClient: HttpClient by lazy { HttpClient(maxConnections = maxDownloads) }
 
     private val listeners = CopyOnWriteArrayList<IDownloadListener>()
 
@@ -390,32 +388,36 @@ class DepotDownloader @JvmOverloads constructor(
         filesystem.createDirectories(fileFinalPath.parent!!)
         filesystem.createDirectories(fileStagingPath.parent!!)
 
-        httpClient.getClient().use { client ->
-            logger?.debug("Starting download of $fileName...")
+        logger?.debug("Starting download of $fileName...")
 
-            val response = client.get(url)
-            val channel = response.bodyAsChannel()
-
-            val totalBytes = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-
-            logger?.debug("File size: ${totalBytes?.let { Util.formatBytes(it) } ?: "Unknown"}")
-
-            filesystem.sink(fileStagingPath).buffer().use { sink ->
-                val tempArray = ByteArray(DEFAULT_BUFFER_SIZE)
-
-                while (!channel.isClosedForRead) {
-                    val bytesRead = channel.readAvailable(tempArray, 0, tempArray.size)
-                    if (bytesRead == -1) {
-                        break // End of stream
-                    }
-                    if (bytesRead > 0) {
-                        sink.write(tempArray, 0, bytesRead)
-                    }
+        val fetcher = steamClient.configuration.fetcher
+        if (fetcher != null) {
+            // The host's own download, copied into staging and then deleted.
+            val fetched = fetcher.fetch(url, emptyMap(), "web_${appId}_$fileName".replace(Regex("[^A-Za-z0-9._-]"), "_"))
+            try {
+                filesystem.sink(fileStagingPath).buffer().use { sink ->
+                    fetched.source().buffer().use { source -> sink.writeAll(source) }
+                }
+            } finally {
+                fetched.delete()
+            }
+        } else {
+            val request = Request.Builder().url(url).build()
+            steamClient.configuration.httpClient.newCall(request).executeAsync().use { response ->
+                if (!response.isSuccessful) {
+                    throw SteamKitWebRequestException(
+                        "Response status code does not indicate success: ${response.code} (${response.message})",
+                        response,
+                    )
+                }
+                logger?.debug("File size: ${response.body.contentLength().takeIf { it >= 0 }?.let { Util.formatBytes(it) } ?: "Unknown"}")
+                filesystem.sink(fileStagingPath).buffer().use { sink ->
+                    sink.writeAll(response.body.source())
                 }
             }
-
-            logger?.debug("Download completed.")
         }
+
+        logger?.debug("Download completed.")
 
         if (filesystem.exists(fileFinalPath)) {
             logger?.debug("Deleting $fileFinalPath")
@@ -1921,8 +1923,6 @@ class DepotDownloader @JvmOverloads constructor(
         processingChannel.close()
 
         scope.cancel("DepotDownloader Closing")
-
-        httpClient.close()
 
         listeners.clear()
 

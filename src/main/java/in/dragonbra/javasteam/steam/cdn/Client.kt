@@ -85,6 +85,8 @@ class Client(steamClient: SteamClient) : Closeable {
 
     private val httpClient: OkHttpClient = steamClient.configuration.httpClient
 
+    private val fetcher: Fetcher? = steamClient.configuration.fetcher
+
     /**
      * Disposes of this object.
      */
@@ -217,6 +219,27 @@ class Client(steamClient: SteamClient) : Closeable {
             Request.Builder()
                 .url(url)
                 .build()
+        }
+
+        fetcher?.let { host ->
+            // The host's own download: the whole chunk in a file, read and then deleted.
+            val headers = request.headers.names().associateWith { request.header(it).orEmpty() }
+            val file = host.fetch(request.url.toString(), headers, "chunk_${depotId}_$chunkID")
+            try {
+                val bytes = file.readBytes()
+                if (bytes.isEmpty()) {
+                    throw SteamKitWebRequestException("Response is empty")
+                }
+                if (chunk.compressedLength > 0 && bytes.size != chunk.compressedLength) {
+                    throw SteamKitWebRequestException(
+                        "Length mismatch after downloading depot chunk! (was ${bytes.size}, but should be ${chunk.compressedLength})"
+                    )
+                }
+                System.arraycopy(bytes, 0, destination, 0, bytes.size)
+                return@withContext bytes.size
+            } finally {
+                file.delete()
+            }
         }
 
         try {

@@ -61,6 +61,12 @@ class SteamConfiguration internal constructor(private val state: SteamConfigurat
         get() = state.httpClient
 
     /**
+     * The host's own downloads for depot chunks, web files and Workshop files, or null to fetch them with [httpClient].
+     */
+    val fetcher: `in`.dragonbra.javasteam.steam.cdn.Fetcher?
+        get() = state.fetcher
+
+    /**
      * The default persona state flags used when requesting information for a new friend, or when calling **SteamFriends.RequestFriendInfo** without specifying flags.
      */
     val defaultPersonaStateFlags: EnumSet<EClientPersonaStateFlag>
